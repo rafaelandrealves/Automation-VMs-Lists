@@ -3,6 +3,7 @@ import pandas
 import os
 import argparse
 
+import platform
 
 
 
@@ -167,8 +168,58 @@ def Populate_VMlist(VMList, JSON_Data):
         VMList.addVM(newVM)
         j= j+1
 
+####### Generate Log File with Missing Data #######
+def Generate_Log_File(VMListExcel):
+    data_log = []
+    Catalog = ['Customer','Hostname','System Description','Criticality','Resource Group','Status','OS','Size','Disks']
+
+    # Check if there is data missing on any parameter except hostname(unique Identifier) and save entries in list
+    for i in VMListExcel.VMs:
+        if i.sysdes in (None, "no data") or i.criticality in (None, "no data") or i.resgroup in (None, "no data") or i.status in (None, "no data") or i.os in (None, "no data") or i.size in (None, "no data") or i.disks in (None, "no data") or i.customer in (None, "no data"): 
+            data_log_instance = []
+            if i.customer in (None, "no data"):
+                data_log_instance.append(Catalog[0])
+            if i.sysdes in (None, "no data"):
+                data_log_instance.append(Catalog[2])
+            if i.criticality in (None, "no data"):
+                data_log_instance.append(Catalog[3])
+            if i.resgroup in (None, "no data"):
+                data_log_instance.append(Catalog[4])
+            if i.status in (None, "no data"):
+                data_log_instance.append(Catalog[5])
+            if i.os in (None, "no data"):
+                data_log_instance.append(Catalog[6])
+            if i.size in (None, "no data"):
+                data_log_instance.append(Catalog[7])
+            if i.disks in (None, "no data"): 
+                data_log_instance.append(Catalog[8])
+            data_log.append([i.hostname,data_log_instance])
     
-####### Get Filtered List of matching VMs based on requirements of System Descript/Size/Managed #######
+    # Write log data into .txt on required path for each OS   
+    linux_path = os.path.join(os.environ["HOMEPATH"], "/var/log/")
+    windows_path = os.path.join(os.environ["HOMEPATH"], "Desktop")
+    # Pass Data to string to read better the logs - use pandas for this
+    Dataframe_Log = pandas.DataFrame(data_log,columns = ['Hostname','Field/s Missing'])
+    if platform.system() == 'Linux':
+        # get name by joing each path and using it to creat .txt
+        Name_of_file = os.path.join(linux_path,"vm_errors.log")
+        
+        # Start writing to file
+        file1 = open(Name_of_file, "w")
+        file1.write(Dataframe_Log.to_string())
+        file1.close()
+    # Now to windows
+    if platform.system() == 'Windows':
+        # get name by joing each path and using it to creat .txt
+        Name_of_file = os.path.join(windows_path,"vm_errors_log.txt")
+        # Start writing to file
+        file1 = open(Name_of_file, "w")
+        file1.write(Dataframe_Log.to_string())
+        file1.close()
+    
+    
+
+####### Get Filtered List of matching VMs based on requirements & Create  #######
 def Filtered_VMs_On_Requirements(VMListExcel, VMListAPI):
     index_pop = 0 
     ## Remove entries that do not match system Description on VMList + Version needs to be 4 + Size minimum reqs.
@@ -229,7 +280,16 @@ def Filtered_VMs_On_Requirements(VMListExcel, VMListAPI):
     Dataframe_VMList_for_excel = pandas.DataFrame(data_excel,columns = ['Customer Name','Hostname','System Description','Criticality','Resource Group','Status','OS','Size', 'Disks','IpAddress','Network','OS Version','IsManaged','IsOperational','IsLocked'])           
     Dataframe_VMList_for_excel.to_excel("V4 List.xlsx")
                 
-    
+# -----------------------------------------------------------     Main     -----------------------------------------------------------
+
+### 0) Get arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("--dirURI", help="Optional Argument to choose Directory URI to start check file VM List.xlsx, otherwise default is current")
+args = parser.parse_args()
+if args.dirURI:
+    path = args.dirURI # current directory, after comes from user 
+else :
+    path = os.path.abspath(os.sep) # root
 
 ### 1) Decode API Response
 # Convert string to json
@@ -245,10 +305,8 @@ decoded_APIList = decoded_APIList.decode("utf-8").replace("'", '"')
 VMList_decoded_JSON_APIList = convert_DecodedString_to_Json(decoded_APIList)
 
 ### 2) Find VMList file
-path = os.path.abspath(os.sep) # current directory, after comes from user 
-
-rootdir =  os.getcwd() #  root dir
-#path = 'C:\Users\I588868\OneDrive - SAP SE\Personal\Exercise Automation'
+#Path if no optional arguments, uses root C:\\
+# Goes through every dir/path sequentially, until finds file match, "root" will bee direcotry where file is found, "os.sep" is just the "\\" to separate dirs and "name" is the name of the file
 exit_var = False
 for root, dirs, files in os.walk(path):
     for name in files:
@@ -270,14 +328,13 @@ ListVMs_API = VM_Stack()
 Populate_VMlist(ListVMs_Excel,VMList_ExcelFileString)
 Populate_VMlist(ListVMs_API,VMList_decoded_JSON_APIList)
 
-### 4) checl lists to see if there is data missing, I categorized it as "None", in VMList (check only parameters in Excel) and generate log file
+### 4) check lists to see if there is data missing, in VMList (check only parameters in Excel) and generate log file
+
+Generate_Log_File(ListVMs_Excel)
+
 
 ### 5) Filter Azure VMs & CC Vms and sizes; Must be present on both lists and have to be "managed"
 
-Full_List_VMs_Filtered = VM_Stack()
 
 Filtered_VMs_On_Requirements(ListVMs_Excel,ListVMs_API)
 
-#convert to excel
-#print(pandas.DataFrame(decoded_APIList))
-## Pedem para user OOP practices, criar class para VMs ou destionos
