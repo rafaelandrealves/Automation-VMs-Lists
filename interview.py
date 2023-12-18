@@ -2,7 +2,7 @@ import base64
 import pandas
 import os
 import argparse
-
+#Only package added, its built-in python and for log file creation
 import platform
 
 
@@ -18,33 +18,9 @@ APIresponse = '''
 '''
 
 
-####### Convert Strings to JSOns #######
-def convert_string_to_JSON(json_string):
-    # Function that covert strings w/jsons into json 
-    # Input arguments
-    # - string w/json
-    # Output arguments
-    # - Json format
-    return eval(json_string)
-
-####### Convert Strings True/False Keys to boolean #######
-def convert_DecodedString_to_Json(json_string):
-    # Function that covert strings w/jsons into json 
-    # Input arguments
-    # - string w/json
-    # Output arguments
-    # - Json format
-
-    # Replace non Boolean entries
-    json_string = json_string.replace(' true', ' "True"')
-    json_string = json_string.replace(' false', ' "False"')
-    # Lower case, for each file to talk the same language
-    json_string = json_string.lower()
-    return eval(json_string)
-
 
 #################### Data Structures ####################
-
+# Class for each VM and their parameters
 class VM(object):
     def __init__(self, _id):
         self.id = _id
@@ -64,7 +40,8 @@ class VM(object):
         self.ismanaged = "None"
         self.isoperational = "None"
         self.islocked = "None"
-
+        
+    # General Functions to change class parameter values
     def ChangeCustomer(self, _customer):
         self.customer = _customer
     def ChangeHostname(self, _Hostname):
@@ -98,20 +75,50 @@ class VM(object):
     def ChangeisLocked(self, _isLocked):
         self.islocked = _isLocked
 
-
+# Class for List of VMs
 class VM_Stack(object):
     def __init__(self):
         self.VMs = []
         self.size = 0
-
+    
+    # General Functions to add or remove elements from List
     def addVM(self, _newVM):
         self.VMs.append(_newVM)
     def remVM(self, index_remove):
         self.VMs.pop(index_remove)
 
+####### Convert Strings to JSOns #######
+def convert_string_to_JSON(json_string):
+    # Function that covert strings w/jsons into json 
+    # Input arguments
+    # - string w/json
+    # Output arguments
+    # - Json/list format
+    return eval(json_string)
+
+####### Convert Strings True/False Keys to boolean #######
+def convert_DecodedString_to_Json(json_string):
+    # Function that coverts strings w/jsons into json  for the cases w/  non-clear info
+    # Input arguments
+    # - string w/json
+    # Output arguments
+    # - Json format
+
+    # Replace non Boolean entries
+    json_string = json_string.replace(' true', ' "True"')
+    json_string = json_string.replace(' false', ' "False"')
+    # Lower case, for each file to talk the same language
+    json_string = json_string.lower()
+    return eval(json_string)
 
 ####### Convert Excel File to JSON #######
-def Extract_Json_From_Excel(path):   
+def Extract_Json_From_Excel(path):
+    # Function that covert strings w/jsons into json 
+    # Input arguments
+    # - path of JSON
+    # Output arguments
+    # - Json format data   
+
     # Read excel document
     excel_data = pandas.read_excel(path, sheet_name='Sheet1')
     # Export to JSON
@@ -123,6 +130,11 @@ def Extract_Json_From_Excel(path):
 
 ####### Populate VM List #######
 def Populate_VMlist(VMList, JSON_Data):
+    # Function that goes through JSON list of VMS and saves it into appropriate class
+    # Input arguments
+    # - list JSON data
+    # - class VMList - list of VMs  
+
     j = 0 
     # Depending on JSON Format, can have items Grouping 
     if len(JSON_Data) == 1:
@@ -131,7 +143,9 @@ def Populate_VMlist(VMList, JSON_Data):
         loop_cond = JSON_Data
 
     for i in loop_cond:
+        # Create VM with id of the initial Index
         newVM = VM(j)
+        # Then change each parameter if it exists
         if "customer" in i:
             newVM.ChangeCustomer(i["customer"])
         if "hostname" in i:
@@ -164,12 +178,19 @@ def Populate_VMlist(VMList, JSON_Data):
             newVM.ChangeisOperational(i["isoperational"])
         if "islocked" in i:
             newVM.ChangeisLocked(i["islocked"])   
-
+        # Finally add the new VM to the List
         VMList.addVM(newVM)
         j= j+1
 
+
+
+
 ####### Generate Log File with Missing Data #######
 def Generate_Log_File(VMListExcel):
+    # Function that goes through VM List for the Excel File and builds a log file with missing data entries
+    # Input arguments
+    # - class VMList with VMs from Excel
+ 
     data_log = []
     Catalog = ['Customer','Hostname','System Description','Criticality','Resource Group','Status','OS','Size','Disks']
 
@@ -219,22 +240,28 @@ def Generate_Log_File(VMListExcel):
     
     
 
-####### Get Filtered List of matching VMs based on requirements & Create  #######
+####### Get Filtered List of matching VMs based on requirements & Create Excel of matches + JSON Print   #######
 def Filtered_VMs_On_Requirements(VMListExcel, VMListAPI):
-    index_pop = 0 
-    ## Remove entries that do not match system Description on VMList + Version needs to be 4 + Size minimum reqs.
-    ## To get Size req. need to remove DS* sizes by splitting between "_", checking if ends with number or char.
-    ## Then pass serial number to integer and check if it meets with the requirements
+    # Function 
+    # Input arguments
+    # - class VMlist from excel file
+    # - class VMlist from api response data
+    index_pop = 0
+    VMList_Filtered = VM_Stack() 
+    ## Add entries that match system Description on VMList + Version needs to be 4 + Size minimum reqs.
+    ## To get Size req. need to ignore DS* sizes by splitting between "_", checking if ends with number or char - Standard_D4s_v4 Correct / Standard_DS4_v3 incorrect
+    ## Then remove initial(Ex. "D/E") and final char(Ex. "s"), pass to integer and check if it meets with the requirements 
     for i in VMListExcel.VMs:
-        if i.sysdes not in ["azure vm", "gc vm"] or i.size[-1] != 4 or  (i.size.split("_")[1])[-1] != "s" or int((i.size.split("_")[1])[1]) < 4: 
-            VMListExcel.remVM(index_pop)
+        if i.sysdes in ["azure vm", "cc vm"] and int(i.size[-1]) == 4 and  (i.size.split("_")[1])[-1] == "s" and int((i.size.split("_")[1])[1:-1]) >= 4: 
+            VMList_Filtered.addVM(i)
         index_pop += 1
     
     index_pop = 0  
     Valid_Hostames_In_VMListAPI = []
     Valid_Hostames_In_VMListAPI_Ids = []
-    ## Remove entries that do not match Managed = True and Lockes requirements
-    ## If entry is valid, save hostnames in list that is going to be used for the combined list
+
+    ## Save entries that match Managed = True and Locked requirements
+    ## If entry is valid, save hostnames in list that is going to be used for the combined list. Variable Ids is to map hostnames in list of VMs
     for j in VMListAPI.VMs:
         if j.ismanaged == "true" and j.islocked == "false": 
             Valid_Hostames_In_VMListAPI.append(j.hostname) 
@@ -242,27 +269,29 @@ def Filtered_VMs_On_Requirements(VMListExcel, VMListAPI):
         index_pop += 1
 
     ## Join Lists Based on HostName
-    ## Checks if hostnames of ExcelList exists in the valid VMs from API list. 
-    ## Place parameters in VM API list in Excel list, might have been more interesting with join list operation
-    index_pop = 0  
-    for k in VMListExcel.VMs:
-        if k.hostname not in Valid_Hostames_In_VMListAPI: 
-            VMListExcel.remVM(index_pop)
+    ## Checks if hostnames of Filtered ExcelList exists in the valid VMs from API list, if not remove from list 
+    ## If exists, Place parameters in VM API list in Filtered Excel list, might have been more interesting with join list operation
+    ## while loop because remove process includes "Pop" which deletes entry from the stack but brings forward entries to the right, so if deletion happens, need to do that iteration again, because a new entry will be in that position
+    k=0
+    while k < (len(VMList_Filtered.VMs)):
+        if VMList_Filtered.VMs[k].hostname not in Valid_Hostames_In_VMListAPI: 
+            VMList_Filtered.remVM(k)
+            k -= 1
         else:
             # Using my hostname match index from the list, to translate that to Ids of the APIList
-            VMListExcel.VMs[index_pop].ipaddress = VMListAPI.VMs[Valid_Hostames_In_VMListAPI_Ids[Valid_Hostames_In_VMListAPI.index(k.hostname)]].ipaddress
-            VMListExcel.VMs[index_pop].network = VMListAPI.VMs[Valid_Hostames_In_VMListAPI_Ids[Valid_Hostames_In_VMListAPI.index(k.hostname)]].network
-            VMListExcel.VMs[index_pop].osversion = VMListAPI.VMs[Valid_Hostames_In_VMListAPI_Ids[Valid_Hostames_In_VMListAPI.index(k.hostname)]].osversion
-            VMListExcel.VMs[index_pop].cputype = VMListAPI.VMs[Valid_Hostames_In_VMListAPI_Ids[Valid_Hostames_In_VMListAPI.index(k.hostname)]].cputype
-            VMListExcel.VMs[index_pop].ismanaged = VMListAPI.VMs[Valid_Hostames_In_VMListAPI_Ids[Valid_Hostames_In_VMListAPI.index(k.hostname)]].ismanaged
-            VMListExcel.VMs[index_pop].isoperational = VMListAPI.VMs[Valid_Hostames_In_VMListAPI_Ids[Valid_Hostames_In_VMListAPI.index(k.hostname)]].isoperational
-            VMListExcel.VMs[index_pop].islocked = VMListAPI.VMs[Valid_Hostames_In_VMListAPI_Ids[Valid_Hostames_In_VMListAPI.index(k.hostname)]].islocked            
-        index_pop += 1
-
+            VMList_Filtered.VMs[k].ipaddress = VMListAPI.VMs[Valid_Hostames_In_VMListAPI_Ids[Valid_Hostames_In_VMListAPI.index(VMList_Filtered.VMs[k].hostname)]].ipaddress
+            VMList_Filtered.VMs[k].network = VMListAPI.VMs[Valid_Hostames_In_VMListAPI_Ids[Valid_Hostames_In_VMListAPI.index(VMList_Filtered.VMs[k].hostname)]].network
+            VMList_Filtered.VMs[k].osversion = VMListAPI.VMs[Valid_Hostames_In_VMListAPI_Ids[Valid_Hostames_In_VMListAPI.index(VMList_Filtered.VMs[k].hostname)]].osversion
+            VMList_Filtered.VMs[k].cputype = VMListAPI.VMs[Valid_Hostames_In_VMListAPI_Ids[Valid_Hostames_In_VMListAPI.index(VMList_Filtered.VMs[k].hostname)]].cputype
+            VMList_Filtered.VMs[k].ismanaged = VMListAPI.VMs[Valid_Hostames_In_VMListAPI_Ids[Valid_Hostames_In_VMListAPI.index(VMList_Filtered.VMs[k].hostname)]].ismanaged
+            VMList_Filtered.VMs[k].isoperational = VMListAPI.VMs[Valid_Hostames_In_VMListAPI_Ids[Valid_Hostames_In_VMListAPI.index(VMList_Filtered.VMs[k].hostname)]].isoperational
+            VMList_Filtered.VMs[k].islocked = VMListAPI.VMs[Valid_Hostames_In_VMListAPI_Ids[Valid_Hostames_In_VMListAPI.index(VMList_Filtered.VMs[k].hostname)]].islocked       
+        k += 1
+        
     ## Generate JSON - Hostname/network/IP/customer_name/criticality/res group/ size/OS Name/status
     data = []
     # Build data structure with the required JSON info.
-    for m in VMListExcel.VMs:
+    for m in VMList_Filtered.VMs:
         data.append([m.hostname,m.network,m.ipaddress,m.customer,m.criticality,m.resgroup,m.size,m.os,m.status])
 
     # Use pandas data frame to pass to json format
@@ -274,15 +303,23 @@ def Filtered_VMs_On_Requirements(VMListExcel, VMListAPI):
 
     ## Generate Excel File - All fields
     data_excel = []
-    for n in VMListExcel.VMs:
+    for n in VMList_Filtered.VMs:
         data_excel.append([n.customer,n.hostname,n.sysdes,n.criticality,n.resgroup,n.status,n.os,n.size,n.disks,n.ipaddress,n.network,n.osversion,n.ismanaged,n.isoperational,n.islocked])
-     # Use pandas data frame to pass to excel format 
+    # Use pandas data frame to pass to excel format 
     Dataframe_VMList_for_excel = pandas.DataFrame(data_excel,columns = ['Customer Name','Hostname','System Description','Criticality','Resource Group','Status','OS','Size', 'Disks','IpAddress','Network','OS Version','IsManaged','IsOperational','IsLocked'])           
     Dataframe_VMList_for_excel.to_excel("V4 List.xlsx")
                 
+
+
+
+
+
+
 # -----------------------------------------------------------     Main     -----------------------------------------------------------
 
-### 0) Get arguments
+
+
+### 0) Get arguments - Ex. C:\Users\I588868\OneDrive - SAP SE\Personal
 parser = argparse.ArgumentParser()
 parser.add_argument("--dirURI", help="Optional Argument to choose Directory URI to start check file VM List.xlsx, otherwise default is current")
 args = parser.parse_args()
@@ -298,15 +335,16 @@ Encoded_Json_ApiResponse = convert_string_to_JSON(APIresponse)
 # Decode base64 
 decoded_APIList = base64.b64decode(Encoded_Json_ApiResponse['GzippedLineItems']['value'])
 
-# Decode from bytes array to string and change quatation markers
+# Decode from bytes array to string and change quotation markers
 decoded_APIList = decoded_APIList.decode("utf-8").replace("'", '"')
-#print(decoded_APIList)
+
 # Convert decoded string to json
 VMList_decoded_JSON_APIList = convert_DecodedString_to_Json(decoded_APIList)
 
 ### 2) Find VMList file
-#Path if no optional arguments, uses root C:\\
-# Goes through every dir/path sequentially, until finds file match, "root" will bee direcotry where file is found, "os.sep" is just the "\\" to separate dirs and "name" is the name of the file
+# Path if no optional arguments, uses root C:\\
+# Goes through every dir/path sequentially, until finds file match, 
+#   "root" will be directory where file is found, "os.sep" is just the "\\" to separate dirs and "name" is the name of the file
 exit_var = False
 for root, dirs, files in os.walk(path):
     for name in files:
@@ -323,12 +361,12 @@ for root, dirs, files in os.walk(path):
 
 ListVMs_Excel = VM_Stack()
 ListVMs_API = VM_Stack()
-#Full_List_VMs = VM_Stack()
+
 
 Populate_VMlist(ListVMs_Excel,VMList_ExcelFileString)
 Populate_VMlist(ListVMs_API,VMList_decoded_JSON_APIList)
 
-### 4) check lists to see if there is data missing, in VMList (check only parameters in Excel) and generate log file
+### 4) Check lists to see if there is data missing, in VMList (check only parameters in Excel) and generate log file
 
 Generate_Log_File(ListVMs_Excel)
 
